@@ -1,0 +1,197 @@
+---
+title: "The lm and de"
+author: "Brian J. Knaus"
+date: "March 18, 2016"
+output: html_document
+---
+
+
+## The linear model
+
+### Linear regression
+
+The heart of linear models is the equation for a line.
+
+
+$$y = mx + b$$
+
+
+To explore this, we can create a data.frame and populate it with simulated data.
+
+```{r}
+mydata <- as.data.frame(matrix(ncol=2, nrow=20))
+colnames(mydata) <- c('response', 'pred1')
+set.seed(1)
+mydata$pred1 <- runif(n=nrow(mydata), min=-10, max=10)
+mydata$response <- 2 * mydata$pred1 + 3
+```
+
+
+And plot it.
+
+
+```{r, fig.align='center'}
+plot(mydata$pred1, mydata$response)
+abline(h=seq(-20, 20, by=5), lty=2, col="#C0C0C0")
+abline(v=seq(-20, 20, by=5), lty=2, col="#C0C0C0")
+```
+
+
+In biology our data is rearely this perfect.
+Instead, this data has some 'error' that contributes to residuals.
+According to the central limit theorem this error typically approximates a normal distribution.
+
+$$y = mx + b + \epsilon_{Norm}$$
+
+
+We can add this error to our data and plot it.
+
+
+```{r, fig.align='center'}
+set.seed(1)
+mydata$pred1 <- mydata$pred1 + rnorm(nrow(mydata), mean = 0, sd = 1)
+plot(mydata$pred1, mydata$response)
+abline(h=seq(-20, 20, by=5), lty=2, col="#C0C0C0")
+abline(v=seq(-20, 20, by=5), lty=2, col="#C0C0C0")
+```
+
+
+We can now perform a linear regression on the data and see if we can predict our original parameters.
+
+
+```{r}
+lm1 <- lm(response ~ pred1, data=mydata)
+summary(lm1)
+```
+
+
+We can also plot the result.
+
+
+```{r, fig.align='center'}
+plot(mydata$pred1, mydata$response)
+abline(h=seq(-20, 20, by=5), lty=2, col="#C0C0C0")
+abline(v=seq(-20, 20, by=5), lty=2, col="#C0C0C0")
+abline(lm1)
+```
+
+
+### Analysis of variance
+
+
+In linear regression we used a quantitative predictor.
+In analysis of variance we use a categorical.
+Categorical data can be represented in R as a factor.
+
+
+```{r}
+mydata$pred1 <- rep(1:2, each=10)
+mydata$pred1 <- as.factor(mydata$pred1)
+mydata$pred1
+```
+
+
+```{r}
+lm1 <- lm(response ~ pred1, data=mydata)
+summary(lm1)
+```
+
+
+```{r}
+stripchart(response ~ pred1, data=mydata, vertical = TRUE)
+mean(mydata$response[1:10])
+mean(mydata$response[11:20])
+```
+
+
+That wasn't very interesting because there was no difference among the groups.
+We can add some treatment affect to the second group and see whatb happens.
+
+
+```{r}
+mydata$response[11:20] <- mydata$response[11:20] + 10
+lm2 <- lm(response ~ pred1, data=mydata)
+summary(lm2)
+mean(mydata$response[1:10])
+mean(mydata$response[11:20])
+stripchart(response ~ pred1, data=mydata, vertical = TRUE)
+```
+
+
+
+
+```{r}
+options("contrasts")
+options(contrasts=c("contr.helmert", "contr.poly"))
+#options(contrasts=c("contr.treatment", "contr.poly"))
+lm3 <- lm(response ~ pred1, data=mydata)
+summary(lm3)
+mean(mydata$response)
+mean(mydata$response[11:20])
+
+hist(residuals(lm3), col=8)
+```
+
+
+
+
+Return contrasts to control treatment.
+
+
+```{r}
+options(contrasts=c("contr.treatment", "contr.poly"))
+```
+
+
+## Sample size
+
+
+```{r}
+set.seed(1)
+x1 <- rnorm(3)
+hist(x1, col=5)
+abline(v=mean(x1), col=2, lwd=4)
+mean(x1)
+```
+
+
+
+
+## Negative binomial GLM
+
+
+Count data can typically be modelled with a Poisson distribution.
+This is a single parameter discrete distribution.
+Variation among samples may contribute to 'extra Poisson dispersion.'
+In this case, we can use a negative binomial distribution.
+This is a two parameter discrete distribution.
+
+
+```{r}
+x1 <- 1:10
+plot(x1, dpois(x=x1, lambda=5))
+plot(x1, dnbinom(x=x1, size=5, mu=5))
+rnbinom(n=1:10, size=1, mu=2)
+```
+
+
+```{r}
+x2 <- 1:100
+plot(x2, dpois(x2, lambda=70), type='h')
+plot(x2, dnbinom(x2, size=10, mu=50), type='h')
+```
+
+
+
+
+
+
+```{r}
+#
+MASS::glm.nb()
+```
+
+
+
+
+

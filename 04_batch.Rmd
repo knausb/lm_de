@@ -1,0 +1,116 @@
+---
+title: "Batch"
+author: "Brian J. Knaus"
+date: "March 22, 2016"
+output: html_document
+---
+
+
+
+
+```{r}
+ssize <- 10
+nstrain <- 2
+ntreat <- 2
+nday <- 3
+
+mydata <- as.data.frame(matrix(ncol=4, nrow=c(nday+1)*ntreat*nstrain*ssize))
+colnames(mydata) <- c('counts', 'day', 'treat', 'strain')
+mydata$day <- as.factor(rep(0:nday, each=ssize*nstrain*ntreat))
+mydata$treat <- as.factor(rep(rep(c('cont', 'treat'), each=ssize*nstrain), times=c(nday+1) ))
+mydata$strain <- as.factor(rep(rep(1:nstrain, each=ssize), times=ntreat*c(nday+1)))
+
+disp <- 10
+set.seed(2)
+mydata$counts <- rnbinom(n=nrow(mydata), mu=10, size=disp)
+
+mydata$counts[c(0 * ssize * ntreat * nstrain + ssize*ntreat + 1):c(0 * ssize * ntreat * nstrain + ssize*ntreat + ssize)] <- rnbinom(n=ssize, mu=100, size=disp)
+
+mydata$counts[c(1 * ssize * ntreat * nstrain + ssize*ntreat + 1):c(1 * ssize * ntreat * nstrain + ssize*ntreat + ssize)] <- rnbinom(n=ssize, mu=100, size=disp)
+
+mydata$counts[c(2 * ssize * ntreat * nstrain + ssize*ntreat + 1):c(2 * ssize * ntreat * nstrain + ssize*ntreat + ssize)] <- rnbinom(n=ssize, mu=100, size=disp)
+
+mydata$counts[c(3 * ssize * ntreat * nstrain + ssize*ntreat + 1):c(3 * ssize * ntreat * nstrain + ssize*ntreat + ssize)] <- rnbinom(n=ssize, mu=100, size=disp)
+```
+
+
+
+```{r}
+#
+stripchart(counts ~ day, data=mydata, vertical=TRUE)
+#
+stripchart(counts ~ treat/day, data=mydata, vertical=TRUE)
+#
+stripchart(counts ~ strain/treat/day, data=mydata, vertical=TRUE, las=3)
+```
+
+
+```{r}
+library(MASS)
+glm1 <- glm(counts ~ day, data=mydata, family = negative.binomial(disp))
+summary(glm1)
+exp(coefficients(glm1))
+exp(coefficients(glm1)[1] + coefficients(glm1)[3])
+#exp(coefficients(glm1)[1]) + exp(coefficients(glm1)[3])
+```
+
+
+
+```{r}
+stripchart(counts ~ treat/day, data=mydata, vertical=TRUE)
+```
+
+
+
+```{r}
+glm2 <- glm(counts ~ treat/day, data=mydata, family = negative.binomial(disp))
+summary(glm2)
+exp(coefficients(glm2))
+exp(coefficients(glm2)[1] + coefficients(glm2)[5])
+exp(coefficients(glm2)[1] + coefficients(glm2)[6])
+#exp(coefficients(glm2)[1] + coefficients(glm2)[5] + coefficients(glm2)[6])
+```
+
+
+```{r}
+#
+stripchart(counts ~ strain/treat/day, data=mydata, vertical=TRUE, las=3)
+```
+
+
+
+```{r}
+glm3 <- glm(counts ~ strain/treat/day, data=mydata, family = negative.binomial(disp))
+summary(glm3)
+```
+
+
+
+```{r}
+anova(glm1, glm2, test = "Chisq")
+anova(glm2, glm3, test = "Chisq")
+```
+
+
+
+```{r}
+glm4 <- glm(counts ~ treat/day + strain:treat, data=mydata, family = negative.binomial(disp))
+glm5 <- glm(counts ~ strain/treat/day + strain:treat, data=mydata, family = negative.binomial(disp))
+
+#
+summary(glm4)
+#summary(glm5)
+```
+
+
+
+```{r}
+anova(glm2, glm4, test = "Chisq")
+anova(glm3, glm4, test = "Chisq")
+anova(glm4, glm5, test = "Chisq")
+
+anova(glm2, glm3, test = "Chisq")
+```
+
+
+

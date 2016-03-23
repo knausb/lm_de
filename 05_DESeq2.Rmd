@@ -1,0 +1,141 @@
+---
+title: "DESeq2"
+author: "Brian J. Knaus"
+date: "March 23, 2016"
+output: html_document
+---
+
+
+We'll use an example from the [DESeq2](https://bioconductor.org/packages/release/bioc/html/DESeq2.html) documentation.
+
+
+Also see the Bioconductor [RNASeq workflow](http://www.bioconductor.org/help/workflows/rnaseqGene/)
+
+
+
+```{r}
+library("pasilla")
+library("Biobase")
+data("pasillaGenes")
+class(pasillaGenes)
+str(pasillaGenes)
+
+countData <- counts(pasillaGenes)
+head(countData)
+colData <- pData(pasillaGenes)[,c("condition","type")]
+colData
+```
+
+
+
+
+```{r}
+library(DESeq2)
+dds <- DESeqDataSetFromMatrix(countData = countData,
+                              colData = colData,
+                              design = ~ condition)
+dds
+```
+
+
+For Zhian: show method uses cat.
+
+
+Regularized log transformation.
+Only for visualization, not analysis.
+
+
+```{r}
+rld <- rlog(dds)
+```
+
+
+```{r}
+plot(countData[,1:2])
+plot(log2(countData[,1:2]))
+plot(assay(rld)[,1:2])
+```
+
+
+Allows log transform while compressing the variance of low expressed genes.
+
+
+
+Heatmap
+
+
+```{r}
+library("RColorBrewer")
+library("pheatmap")
+sampleDists <- dist(t(assay(rld)))
+sampleDistMatrix <- as.matrix(sampleDists)
+rownames(sampleDistMatrix) <- paste(rld$condition, rld$type, sep="-")
+colnames(sampleDistMatrix) <- NULL
+colors <- colorRampPalette( rev(brewer.pal(9, "Blues")) )(255)
+pheatmap(sampleDistMatrix,
+         clustering_distance_rows=sampleDists,
+         clustering_distance_cols=sampleDists,
+         col=colors)
+```
+
+
+
+PCA
+
+```{r}
+plotPCA(rld, intgroup=c("condition", "type"))
+```
+
+
+
+
+## Differential expression
+
+
+```{r}
+dds <- DESeq(dds)
+```
+
+
+
+```{r}
+res <- results(dds)
+head(res)
+summary(res)
+res05 <- results(dds, alpha=0.05)
+sum(res05$padj < 0.05, na.rm=TRUE)
+```
+
+
+Sort by p-value.
+
+```{r}
+resOrdered <- res[order(res$padj),]
+```
+
+
+
+```{r}
+resSig <- subset(resOrdered, padj < 0.05)
+head(resSig)
+```
+
+
+
+```{r}
+hist(res$pvalue)
+hist(res$padj)
+```
+
+
+
+```{r}
+hist(dispersions(dds))
+min(dispersions(dds), na.rm = TRUE)
+```
+
+
+
+
+
+
