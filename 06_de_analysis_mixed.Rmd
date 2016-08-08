@@ -1,0 +1,308 @@
+---
+title: "DE analysis with mixed effets"
+author: "Brian J. Knaus"
+date: "August 8, 2016"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+**Random effects** are differences that are largely due to technical error in the experiment.
+Ideally they would be zero.
+But practically they are typically present.
+Because these are measures of the same experimental unit (i.e., the same genotype) there is an expectation for a correlation in the response to random effects.
+Because of these we model these as 'randome effects' as opposed to 'independent.'
+If we do not specify these differences as 'random effects' they are implicitly treated as independent.
+
+
+**Fixed effects** are differences that are of interest to the research question and the hypothesis being tested.
+These effects can typically be attributed to some part of the experimental design.
+
+
+**Model building in R**
+In order to build a simple linear model in R the funciton `lm()` can be used.
+In order to extend the functionality of this function typically requires additional libraries.
+For example, if we wish to specify random effects we will probably need a new, more sophisticated, function.
+Similarly, if we wish to 'generalize' our model with a non-normal error we will need to find a new function which will typically be in another package.
+Adding model complexity typically involves shopping for funcitons that support the desired options.
+Frequently, more than one solution exists.
+
+
+
+## Model matrix
+
+
+```{r}
+mmat <- as.data.frame(factor(rep(paste("gt", 1:3, sep=""), times=2)))
+mmat[,2] <- rep(c("ctrl", "trt1"), each=3)
+names(mmat) <- c('GT', 'TRT')
+mmat <- rbind(mmat, mmat, mmat)
+mmat[,3] <- rep(paste('rep', 1:3, sep=""), each=6)
+names(mmat)[3] <- "REP"
+```
+
+
+## Simulate data
+
+
+```{r}
+set.seed(999)
+counts <- matrix( rnbinom( n = 18*6, mu = 4, size = 2), ncol=18 )
+#counts <- matrix( rnbinom( n = 18*3, mu = 4, size = 2), ncol=18, nrow=3 )
+rownames(counts) <- paste("gene", 1:nrow(counts), sep="")
+colnames(counts) <- paste(rep(paste("samp", 1:3, sep=""), times=6), mmat$TRT, mmat$REP, sep="_")
+```
+
+
+Add treatment effects.
+
+
+```{r}
+set.seed(999)
+counts[,mmat$TRT == "trt1"] <- rnbinom( n = 9, mu = 24, size = 2)
+```
+
+
+Add some random effects.
+
+
+```{r}
+counts[,mmat$REP == 'rep3'] <- counts[1,mmat$REP == 'rep3'] + 10
+```
+
+
+## Visualize
+
+
+Count data.
+
+
+```{r}
+stripchart(counts[1,] ~ TRT, data = mmat, vertical = TRUE, method='jitter', jitter = 0.1)
+```
+
+
+Random (batch) effects.
+
+
+```{r}
+boxplot( counts[1,] ~ mmat$REP)
+```
+
+
+## Model
+
+
+
+```{r}
+#library(MASS)
+#options( contrasts = c("contr.treatment", "contr.poly") )
+#glm1 <- glm( counts[1,] ~ TRT, data = mmat, family = negative.binomial(2) )
+#summary(glm1)
+#exp( coefficients(glm1) )
+```
+
+Set contrasts and load libraries.
+
+```{r}
+options( contrasts = c("contr.treatment", "contr.poly") )
+library(MASS)
+library(lme4)
+# ?formula
+?glmer
+```
+
+
+```{r}
+glm1 <- glm( counts[1,] ~ TRT, data = mmat, family = negative.binomial(2) )
+summary(glm1)
+exp(coefficients(glm1))
+```
+
+
+The Inercept is the population mean for the control.
+The TRTtrt1 is the difference in population mean of the treatment relative to the Intercept.
+The p-value indicates that the control is significantly different from zero.
+The second p-value indicates that TRTtrt1 is significantly different from the Intercept.
+
+
+```{r}
+glm2 <- glm( counts[1,] ~ TRT + GT, data = mmat, family = negative.binomial(2) )
+summary(glm2)
+```
+
+Now our intercept should be for GTgt1 in the control.
+Notice that the Intercept differes in glm1 and glm2 to reflect this change.
+We also have parameters for GTgt2 and GTgt3 that are population means relative to GTgt1 in the control.
+
+
+
+```{r}
+# Three synonyms.
+#glm3 <- glm( counts[1,] ~ TRT + GT + TRT:GT, data = mmat, family = negative.binomial(2) )
+glm3 <- glm( counts[1,] ~ TRT + GT + GT:TRT, data = mmat, family = negative.binomial(2) )
+#glm3 <- glm( counts[1,] ~ GT*TRT, data = mmat, family = negative.binomial(2) )
+summary(glm3)
+```
+
+Note that there are several ways to specify the same model.
+Our intercept has changed again.
+I believe this is because it is now the mean for GTgt1 in the control and its interaction with the treatment.
+We also have estimates for the second and third genotypes as well as their interactions with the treatment.
+
+
+```{r}
+# Must have random effects specified.
+#glm4 <- glmer( counts[1,] ~ TRT + (1 | REP), data = mmat, family = negative.binomial(2) )
+glm4 <- glmer( counts[2,] ~ TRT + (1 | REP), data = mmat, family = negative.binomial(2) )
+summary(glm4)
+```
+
+
+```{r}
+# Synonyms
+#glm5 <- glmer( counts[2,] ~ TRT*GT + (1 | REP), data = mmat, family = negative.binomial(2) )
+glm5 <- glmer( counts[2,] ~ TRT + GT + TRT:GT + (1 | REP), data = mmat, family = negative.binomial(2) )
+summary(glm5)
+```
+
+
+
+## Implementation over many transcripts
+
+
+In RNA-Seq experiments we typically implement a linear model for each transcript.
+Prior to this test there are typically two steps of preprocessing.
+First the data are subset to transcripts with some minimum threshold of coverage.
+Second, a dispersion paramenter is esimated.
+
+
+### Minimum coverage filtering
+
+
+Transcripts that include zero counts for a sample will typically present analytical problems.
+This is because zero count samples means that we do not know anything about that sample.
+The problems will typically manifest themselves as convergence problems or other sorts of errors or warnings.
+To avoid these problems the transcripts are typically filtered on some minimum threshold.
+In this example I've simulated a small number of transripts and therefore can't afford to lose many in this step.
+Because of this I will use a permissive (low) threshold.
+(Actually I ended up using a threshold of zero which accomplishes nothing, but the code provides an example.)
+Real RNA-Seq datasets will typically consist of thousands or tens of thousands of transcripts.
+A less permissive (higher) threshold may be used in these larger data sets.
+
+
+```{r}
+minimum_threshold <- 0
+counts <- counts[ apply( counts, MARGIN = 1, function(x){ sum( x >= minimum_threshold ) == length(x) } ), ]
+
+```
+
+
+
+### Dispersion parameter
+
+
+The negative binomial distribution is typically used to model RNA-Seq data.
+This is a two parameter distribution where one parameter is a mean and the other is a dispersion.
+The dispersion is analagous to variance in that it describes the variability in the data around the mean value.
+Because RNA-Seq data generally consists of a small number of samples for each transcript the dispersion parameter is typically esimated over all transcripts.
+There are at least two options here: edgeR and DESeq2.
+Neither option appears to support randomw effects in their design ( + (1 | REP) ).
+I don't think this is a big issue.
+Both methods will require you to normalize the count data to account for differences in library size due to sequencing output.
+
+
+
+```{r}
+library(edgeR)
+
+ncounts <- sweep(counts, MARGIN = 2, STATS = calcNormFactors(counts), FUN = "*")
+disp <- estimateDisp( ncounts, design = model.matrix(~ TRT + GT+ TRT:GT, data=mmat), trend.method = "movingave" )
+disp$tagwise.dispersion
+```
+
+
+There are lots of options here to explore.
+See the documentation for details.
+
+
+In DESeq2, we need to first create an object of class DESeqDataSet.
+
+
+```{r, message=FALSE}
+library(DESeq2)
+```
+
+
+```{r}
+dds <- DESeqDataSetFromMatrix(countData = counts,
+                              colData = mmat,
+                              design = ~ TRT + GT + TRT:GT)
+dds
+dds <- estimateSizeFactors(dds)
+dds <- estimateDispersions(dds)
+
+disp <- dispersions(dds)
+ncounts <- counts(dds, normalized=TRUE)
+```
+
+
+Now that we have normalized data and dispersion parameters we can proceed to our test for differential expression.
+
+
+```{r}
+de_func <- function(x){
+  glm6 <- glmer( ncounts[x,] ~ TRT + GT + TRT:GT + (1 | REP), data = mmat, family = negative.binomial(disp[x]) )
+  pval <- summary(glm6)[[10]][2,4]
+  return( pval )
+}
+
+
+de_handler <- function(x){
+  tryCatch(de_func(x),
+           error = function(x) "error",
+           warning = function(x) "warning",
+           message = function(x) "message"
+  )
+}
+
+
+myResults <- sapply(1:6, de_handler)
+myResults
+```
+
+
+Depending on the hypothesis to be tested you may want to modify the return value of `de_func()`.
+
+
+The `tryCatch` function helps handle exceptions and allows you to iterate over all the transcripts without stopping if you encounter an exception.
+I don't have a lot of experience with it so you may be able to engineer something more elegant.
+
+
+For our example we can simply print the results to the screen.
+For real datasets we may need methods to manage large quantities of data.
+
+
+```{r}
+sum(myResults == "error")
+rownames(counts)[myResults == "error"]
+counts[myResults == "error",]
+
+sum(myResults == "warning")
+```
+
+
+If we isolate the results that returned a p-value we can correct them for multiple comparisons.
+
+
+```{r}
+myResults2 <-  myResults[myResults != "error"]
+myResults2 <- as.numeric(myResults2)
+p.adjust(myResults2, method = "BH")
+```
+
+
